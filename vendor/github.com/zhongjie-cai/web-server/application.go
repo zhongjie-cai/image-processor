@@ -83,6 +83,9 @@ func NewApplication(
 		false,
 	}
 	applicationMap[port] = application
+	if len(applicationMap) == 1 {
+		applicationMap[0] = application
+	}
 	return application
 }
 
