@@ -3,7 +3,7 @@
 ############################
 FROM golang:1.15 AS builder
 
-WORKDIR $GOPATH/src/github.com/zhongjie-cai/SmartWorkflowEngine
+WORKDIR $GOPATH/src/github.com/zhongjie-cai/image-processor
 
 COPY . .
 
@@ -19,3 +19,7 @@ FROM alpine:latest AS runner
 COPY --from=builder /go/bin/image-processor /go/bin/image-processor
 
 WORKDIR /go/bin
+
+EXPOSE 18605
+
+ENTRYPOINT ./image-processor
