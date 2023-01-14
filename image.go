@@ -66,7 +66,7 @@ func mergeImage(left image.Image, right image.Image) image.Image {
 				x,
 				y,
 				right.At(
-					boundsRight.X - x + boundsLeft.X,
+					boundsRight.X - 1 - x + boundsLeft.X,
 					y,
 				),
 			)
