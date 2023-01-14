@@ -6,7 +6,7 @@ import (
 	"image"
 	"image/draw"
 	"image/jpeg"
-	_ "image/png"
+	"image/png"
 )
 
 func readImage(imageBytes []byte, needInvert bool) (image.Image, error) {
@@ -20,7 +20,7 @@ func readImage(imageBytes []byte, needInvert bool) (image.Image, error) {
 	}
 	var bounds = decodedImage.Bounds().Max
 	var rect = image.Rect(0, 0, bounds.X, bounds.Y)
-	var outputImage = image.NewNRGBA64(rect)
+	var outputImage = image.NewNRGBA(rect)
 	for y := 0; y < bounds.Y; y++ {
 		for x := 0; x < bounds.X; x++ {
 			outputImage.Set(
@@ -42,7 +42,7 @@ func cropImage(input image.Image) image.Image {
 	var y1 = bounds.Y
 	var sp = image.Pt(0, 0)
 	var crops = image.Rect(0, 0, x1, y1)
-	var output = image.NewNRGBA64(crops)
+	var output = image.NewNRGBA(crops)
 	draw.Draw(output, crops, input, sp, draw.Src)
 	return output
 }
@@ -56,7 +56,7 @@ func mergeImage(left image.Image, right image.Image) image.Image {
 		height = boundsRight.Y
 	}
 	var merge = image.Rect(0, 0, width, height)
-	var output = image.NewNRGBA64(merge)
+	var output = image.NewNRGBA(merge)
 	var sp = image.Pt(0, 0)
 	var leftRect = image.Rect(0, 0, boundsLeft.X, boundsLeft.Y)
 	draw.Draw(output, leftRect, left, sp, draw.Src)
@@ -66,7 +66,7 @@ func mergeImage(left image.Image, right image.Image) image.Image {
 				x,
 				y,
 				right.At(
-					boundsRight.X - x + boundsLeft.X,
+					boundsRight.X - 1 - x + boundsLeft.X,
 					y,
 				),
 			)
@@ -75,9 +75,16 @@ func mergeImage(left image.Image, right image.Image) image.Image {
 	return output
 }
 
-func writeImage(output image.Image, quality int) ([]byte, error) {
+func writeImage(output image.Image, quality int, saveAsPNG bool) ([]byte, error) {
 	var buffer bytes.Buffer
 	var writer = bufio.NewWriter(&buffer)
+	if saveAsPNG {
+		var pngErr = png.Encode(writer, output)
+		if pngErr != nil {
+			return nil, pngErr
+		}
+		return buffer.Bytes(), nil
+	}
 	var jpegErr = jpeg.Encode(writer, output, &jpeg.Options{Quality: quality})
 	if jpegErr != nil {
 		return nil, jpegErr
@@ -91,6 +98,7 @@ func processImage(
 	rightImageBytes []byte,
 	rightWatermarkOnRight bool,
 	quality int,
+	saveAsPNG bool,
 ) ([]byte, error) {
 	var leftImage, leftImageErr = readImage(
 		leftImageBytes,
@@ -110,7 +118,11 @@ func processImage(
 		cropImage(leftImage),
 		cropImage(rightImage),
 	)
-	var imageOutBytes, imageOutErr = writeImage(imageOut, quality)
+	var imageOutBytes, imageOutErr = writeImage(
+		imageOut,
+		quality,
+		saveAsPNG,
+	)
 	if imageOutErr != nil {
 		return nil, imageOutErr
 	}

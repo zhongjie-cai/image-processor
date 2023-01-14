@@ -61,6 +61,10 @@ const INDEX_PAGE_CONTENT string = `<html>
       <input type="text" id="quality"
 	    name="quality" value="100" />
       <br />
+	  <label>Save as PNG:&nbsp;</label>
+	  <input type="checkbox" name="save_as_png"
+	    id="save_as_png" value="true">
+	  <br />
       <input type="submit" />
     </form>
   </body>
@@ -99,7 +103,7 @@ func getImageBytes(multipartForm *multipart.Form, filename string) ([]byte, erro
 	return buffer.Bytes(), nil
 }
 
-func getWatermarkCheckValue(multipartForm *multipart.Form, key string) bool {
+func getCheckboxValue(multipartForm *multipart.Form, key string) bool {
 	var value, found = multipartForm.Value[key]
 	if !found {
 		return false
@@ -123,16 +127,20 @@ func getImageQuality(multipartForm *multipart.Form) int {
 	return quality
 }
 
-func getImageName(multipartForm *multipart.Form) string {
+func getImageName(multipartForm *multipart.Form, saveAsPNG bool) string {
 	var namePrefixes, found = multipartForm.Value["name_prefix"]
 	if !found || len(namePrefixes) == 0 {
 		namePrefixes = []string{"image-out"}
+	}
+	var suffix = ".jpg"
+	if saveAsPNG {
+		suffix = ".png"
 	}
 	return fmt.Sprint(
 		namePrefixes[0],
 		"-",
 		time.Now().Unix(),
-		".jpg",
+		suffix,
 	)
 }
 
@@ -150,26 +158,31 @@ func processAction(session webserver.Session) (interface{}, error) {
 	if rightImageErr != nil {
 		return nil, rightImageErr
 	}
-	var leftWatermarkOnRight = getWatermarkCheckValue(
+	var leftWatermarkOnRight = getCheckboxValue(
 		request.MultipartForm,
 		"left_image_water_mark_on_right",
 	)
-	var rightleftWatermarkOnRight = getWatermarkCheckValue(
+	var rightleftWatermarkOnRight = getCheckboxValue(
 		request.MultipartForm,
 		"right_image_water_mark_on_right",
 	)
 	var quality = getImageQuality(request.MultipartForm)
+	var saveAsPNG = getCheckboxValue(
+		request.MultipartForm,
+		"save_as_png",
+	)
 	var outImageBytes, outImageErr = processImage(
 		leftImageBytes,
 		leftWatermarkOnRight,
 		rightImageBytes,
 		rightleftWatermarkOnRight,
 		quality,
+		saveAsPNG,
 	)
 	if outImageErr != nil {
 		return nil, outImageErr
 	}
-	var outImageName = getImageName(request.MultipartForm)
+	var outImageName = getImageName(request.MultipartForm, saveAsPNG)
 	var responseWriter = session.GetResponseWriter()
 	responseWriter.Header().Set("Content-Type", "application/octet-stream")
 	responseWriter.Header().Set("Content-Disposition", fmt.Sprint("attachment;filename=", outImageName))
