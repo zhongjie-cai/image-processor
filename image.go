@@ -6,29 +6,42 @@ import (
 	"image"
 	"image/draw"
 	"image/jpeg"
+	_ "image/png"
 )
 
-func readImage(imageBytes []byte) (image.Image, error) {
+func readImage(imageBytes []byte, needInvert bool) (image.Image, error) {
 	var reader = bytes.NewReader(imageBytes)
 	var decodedImage, _, decodeErr = image.Decode(reader)
 	if decodeErr != nil {
 		return nil, decodeErr
 	}
-	return decodedImage, nil
+	if !needInvert {
+		return decodedImage, nil
+	}
+	var bounds = decodedImage.Bounds().Max
+	var rect = image.Rect(0, 0, bounds.X, bounds.Y)
+	var outputImage = image.NewNRGBA64(rect)
+	for y := 0; y < bounds.Y; y++ {
+		for x := 0; x < bounds.X; x++ {
+			outputImage.Set(
+				x,
+				y,
+				decodedImage.At(
+					bounds.X - x,
+					y,
+				),
+			)
+		}
+	}
+	return outputImage, nil
 }
 
-func cropImage(input image.Image, left bool) image.Image {
+func cropImage(input image.Image) image.Image {
 	var bounds = input.Bounds().Max
-	var x0=0
-	var y0=0
 	var x1=bounds.X/ 2
 	var y1 = bounds.Y
-	if !left {
-		x0 = bounds.X/2
-		x1 = bounds.X
-	}
-	var sp = image.Pt(x0, 0)
-	var crops = image.Rect(0, y0, x1-x0, y1)
+	var sp = image.Pt(0, 0)
+	var crops = image.Rect(0, 0, x1, y1)
 	var output = image.NewNRGBA64(crops)
 	draw.Draw(output, crops, input, sp, draw.Src)
 	return output
@@ -39,16 +52,26 @@ func mergeImage(left image.Image, right image.Image) image.Image {
 	var boundsRight = right.Bounds().Max
 	var width = boundsLeft.X + boundsRight.X
 	var height = boundsLeft.Y
-	if height < boundsRight.Y {
+	if height > boundsRight.Y {
 		height = boundsRight.Y
 	}
 	var merge = image.Rect(0, 0, width, height)
-	var sp = image.Point{}
-	var leftRect = image.Rect(0, 0, boundsLeft.X, boundsLeft.Y)
-	var rightRect = image.Rect(boundsLeft.X, 0, boundsLeft.X+boundsRight.X, boundsRight.Y)
 	var output = image.NewNRGBA64(merge)
+	var sp = image.Pt(0, 0)
+	var leftRect = image.Rect(0, 0, boundsLeft.X, boundsLeft.Y)
 	draw.Draw(output, leftRect, left, sp, draw.Src)
-	draw.Draw(output, rightRect, right, sp, draw.Src)
+	for y := 0; y < height; y++ {
+		for x := boundsLeft.X; x < boundsLeft.X+boundsRight.X; x++ {
+			output.Set(
+				x,
+				y,
+				right.At(
+					boundsRight.X - x + boundsLeft.X,
+					y,
+				),
+			)
+		}
+	}
 	return output
 }
 
@@ -62,18 +85,30 @@ func writeImage(output image.Image, quality int) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func processImage(leftImageBytes []byte, rightImageBytes []byte, quality int) ([]byte, error) {
-	var leftImage, leftImageErr = readImage(leftImageBytes)
+func processImage(
+	leftImageBytes []byte,
+	leftWatermarkOnRight bool,
+	rightImageBytes []byte,
+	rightWatermarkOnRight bool,
+	quality int,
+) ([]byte, error) {
+	var leftImage, leftImageErr = readImage(
+		leftImageBytes,
+		!leftWatermarkOnRight,
+	)
 	if leftImageErr != nil {
 		return nil, leftImageErr
 	}
-	var rightImage, rightImageErr = readImage(rightImageBytes)
+	var rightImage, rightImageErr = readImage(
+		rightImageBytes,
+		!rightWatermarkOnRight,
+	)
 	if rightImageErr != nil {
 		return nil, rightImageErr
 	}
 	var imageOut = mergeImage(
-		cropImage(leftImage, true),
-		cropImage(rightImage, false),
+		cropImage(leftImage),
+		cropImage(rightImage),
 	)
 	var imageOutBytes, imageOutErr = writeImage(imageOut, quality)
 	if imageOutErr != nil {

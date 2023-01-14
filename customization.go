@@ -42,19 +42,24 @@ const INDEX_PAGE_CONTENT string = `<html>
       <label>Left image:&nbsp;</label>
       <input type="file" id="left_image" name="left_image" />
       <br />
+	  <label>Left image watermark is on right side:&nbsp;</label>
+	  <input type="checkbox" name="left_image_water_mark_on_right"
+	    id="left_image_water_mark_on_right" value="true" checked>
+	  <br />
       <label>Right image:&nbsp;</label>
       <input type="file" id="right_image" name="right_image" />
       <br />
+	  <label>Right image watermark is on right side:&nbsp;</label>
+	  <input type="checkbox" name="right_image_water_mark_on_right"
+	    id="right_image_water_mark_on_right" value="true" checked>
+	  <br />
       <label>Name prefix:&nbsp;</label>
-      <input
-        type="text"
-        id="name_prefix"
-        name="name_prefix"
-        value="image-out"
-      />
+      <input type="text" id="name_prefix"
+	    name="name_prefix" value="image-out" />
       <br />
       <label>Quality:&nbsp;</label>
-      <input type="text" id="quality" name="quality" value="90" />
+      <input type="text" id="quality"
+	    name="quality" value="100" />
       <br />
       <input type="submit" />
     </form>
@@ -94,14 +99,26 @@ func getImageBytes(multipartForm *multipart.Form, filename string) ([]byte, erro
 	return buffer.Bytes(), nil
 }
 
+func getWatermarkCheckValue(multipartForm *multipart.Form, key string) bool {
+	var value, found = multipartForm.Value[key]
+	if !found {
+		return false
+	}
+	var checked, err =strconv.ParseBool(value[0])
+	if err != nil {
+		return false
+	}
+	return checked
+}
+
 func getImageQuality(multipartForm *multipart.Form) int {
 	var qualities, found = multipartForm.Value["quality"]
 	if !found || len(qualities) == 0 {
-		return 90
+		return 100
 	}
 	var quality, err = strconv.Atoi(qualities[0])
 	if err != nil {
-		return 90
+		return 100
 	}
 	return quality
 }
@@ -133,10 +150,20 @@ func processAction(session webserver.Session) (interface{}, error) {
 	if rightImageErr != nil {
 		return nil, rightImageErr
 	}
+	var leftWatermarkOnRight = getWatermarkCheckValue(
+		request.MultipartForm,
+		"left_image_water_mark_on_right",
+	)
+	var rightleftWatermarkOnRight = getWatermarkCheckValue(
+		request.MultipartForm,
+		"right_image_water_mark_on_right",
+	)
 	var quality = getImageQuality(request.MultipartForm)
 	var outImageBytes, outImageErr = processImage(
 		leftImageBytes,
+		leftWatermarkOnRight,
 		rightImageBytes,
+		rightleftWatermarkOnRight,
 		quality,
 	)
 	if outImageErr != nil {
