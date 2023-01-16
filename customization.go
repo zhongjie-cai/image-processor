@@ -185,6 +185,7 @@ func processAction(session webserver.Session) (interface{}, error) {
 	var outImageName = getImageName(request.MultipartForm, saveAsPNG)
 	var responseWriter = session.GetResponseWriter()
 	responseWriter.Header().Set("Content-Type", "application/octet-stream")
+	responseWriter.Header().Set("Content-Length", strconv.Itoa(len(outImageBytes)))
 	responseWriter.Header().Set("Content-Disposition", fmt.Sprint("attachment;filename=", outImageName))
 	responseWriter.WriteHeader(http.StatusOK)
 	responseWriter.Write(outImageBytes)
