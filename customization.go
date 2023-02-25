@@ -35,7 +35,7 @@ func (customization *myCustomization) Routes() []webserver.Route {
 
 const INDEX_PAGE_CONTENT string = `<html>
   <header>
-    <title>Uploader</title>
+    <title>Uploader v` + APP_VERSION + `</title>
   </header>
   <body>
     <form method="POST" enctype="multipart/form-data">
@@ -68,6 +68,9 @@ const INDEX_PAGE_CONTENT string = `<html>
 	    id="save_as_png" value="true">
 	  <br />
       <input type="submit" />
+	  <br />
+	  <br />
+	  <label>App Version = ` + APP_VERSION + `</label>
     </form>
   </body>
 </html>`
