@@ -93,38 +93,46 @@ func writeImage(output image.Image, quality int, saveAsPNG bool) ([]byte, error)
 }
 
 func processImage(
-	leftImageBytes []byte,
+	leftImageBytes [][]byte,
 	leftWatermarkOnRight bool,
-	rightImageBytes []byte,
+	rightImageBytes [][]byte,
 	rightWatermarkOnRight bool,
 	quality int,
 	saveAsPNG bool,
-) ([]byte, error) {
-	var leftImage, leftImageErr = readImage(
-		leftImageBytes,
-		!leftWatermarkOnRight,
-	)
-	if leftImageErr != nil {
-		return nil, leftImageErr
+) ([][]byte, error) {
+	var count = len(leftImageBytes)
+	if count > len(rightImageBytes) {
+		count = len(rightImageBytes)
 	}
-	var rightImage, rightImageErr = readImage(
-		rightImageBytes,
-		!rightWatermarkOnRight,
-	)
-	if rightImageErr != nil {
-		return nil, rightImageErr
+	var allBytes = make([][]byte, 0, count)
+	for i := 0; i < count; i++ {
+		var leftImage, leftImageErr = readImage(
+			leftImageBytes[i],
+			!leftWatermarkOnRight,
+		)
+		if leftImageErr != nil {
+			return nil, leftImageErr
+		}
+		var rightImage, rightImageErr = readImage(
+			rightImageBytes[i],
+			!rightWatermarkOnRight,
+		)
+		if rightImageErr != nil {
+			return nil, rightImageErr
+		}
+		var imageOut = mergeImage(
+			cropImage(leftImage),
+			cropImage(rightImage),
+		)
+		var imageOutBytes, imageOutErr = writeImage(
+			imageOut,
+			quality,
+			saveAsPNG,
+		)
+		if imageOutErr != nil {
+			return nil, imageOutErr
+		}
+		allBytes = append(allBytes, imageOutBytes)
 	}
-	var imageOut = mergeImage(
-		cropImage(leftImage),
-		cropImage(rightImage),
-	)
-	var imageOutBytes, imageOutErr = writeImage(
-		imageOut,
-		quality,
-		saveAsPNG,
-	)
-	if imageOutErr != nil {
-		return nil, imageOutErr
-	}
-	return imageOutBytes, nil
+	return allBytes, nil
 }

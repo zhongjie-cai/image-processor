@@ -40,14 +40,16 @@ const INDEX_PAGE_CONTENT string = `<html>
   <body>
     <form method="POST" enctype="multipart/form-data">
       <label>Left image:&nbsp;</label>
-      <input type="file" id="left_image" name="left_image" />
+      <input type="file" id="left_image" name="left_image"
+	    multiple="multiple" />
       <br />
 	  <label>Left image watermark is on right side:&nbsp;</label>
 	  <input type="checkbox" name="left_image_water_mark_on_right"
 	    id="left_image_water_mark_on_right" value="true" checked>
 	  <br />
       <label>Right image:&nbsp;</label>
-      <input type="file" id="right_image" name="right_image" />
+      <input type="file" id="right_image" name="right_image"
+	    multiple="multiple" />
       <br />
 	  <label>Right image watermark is on right side:&nbsp;</label>
 	  <input type="checkbox" name="right_image_water_mark_on_right"
@@ -85,22 +87,26 @@ func indexAction(session webserver.Session) (interface{}, error) {
 	return webserver.SkipResponseHandling()
 }
 
-func getImageBytes(multipartForm *multipart.Form, filename string) ([]byte, error) {
+func getImageBytes(multipartForm *multipart.Form, filename string) ([][]byte, error) {
 	var files, found = multipartForm.File[filename]
 	if !found || len(files) < 1 {
 		return nil, fmt.Errorf("unable to load file for %v", filename)
 	}
-	var imageFile, imageErr = files[0].Open()
-	if imageErr != nil {
-		return nil, imageErr
+	var allBytes = make([][]byte, 0, len(files))
+	for _, file := range files {
+		var imageFile, imageErr = file.Open()
+		if imageErr != nil {
+			return nil, imageErr
+		}
+		defer imageFile.Close()
+		var buffer bytes.Buffer
+		var _, bufferErr = buffer.ReadFrom(imageFile)
+		if bufferErr != nil {
+			return nil, bufferErr
+		}
+		allBytes = append(allBytes, buffer.Bytes())
 	}
-	defer imageFile.Close()
-	var buffer bytes.Buffer
-	var _, bufferErr = buffer.ReadFrom(imageFile)
-	if bufferErr != nil {
-		return nil, bufferErr
-	}
-	return buffer.Bytes(), nil
+	return allBytes, nil
 }
 
 func getCheckboxValue(multipartForm *multipart.Form, key string) bool {
@@ -127,21 +133,12 @@ func getImageQuality(multipartForm *multipart.Form) int {
 	return quality
 }
 
-func getImageName(multipartForm *multipart.Form, saveAsPNG bool) string {
+func getNamePrefix(multipartForm *multipart.Form) string {
 	var namePrefixes, found = multipartForm.Value["name_prefix"]
 	if !found || len(namePrefixes) == 0 {
 		namePrefixes = []string{"image-out"}
 	}
-	var suffix = ".jpg"
-	if saveAsPNG {
-		suffix = ".png"
-	}
-	return fmt.Sprint(
-		namePrefixes[0],
-		"-",
-		time.Now().Unix(),
-		suffix,
-	)
+	return namePrefixes[0]
 }
 
 func processAction(session webserver.Session) (interface{}, error) {
@@ -182,12 +179,29 @@ func processAction(session webserver.Session) (interface{}, error) {
 	if outImageErr != nil {
 		return nil, outImageErr
 	}
-	var outImageName = getImageName(request.MultipartForm, saveAsPNG)
+	var namePrefix = getNamePrefix(request.MultipartForm)
+	var archiveBytes, archiveName, archiveErr = generateArchive(
+		outImageBytes,
+		namePrefix,
+		saveAsPNG,
+	)
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
 	var responseWriter = session.GetResponseWriter()
-	responseWriter.Header().Set("Content-Type", "application/octet-stream")
-	responseWriter.Header().Set("Content-Length", strconv.Itoa(len(outImageBytes)))
-	responseWriter.Header().Set("Content-Disposition", fmt.Sprint("attachment;filename=", outImageName))
+	responseWriter.Header().Set(
+		"Content-Type",
+		"application/octet-stream",
+	)
+	responseWriter.Header().Set(
+		"Content-Length",
+		strconv.Itoa(len(archiveBytes)),
+	)
+	responseWriter.Header().Set(
+		"Content-Disposition",
+		fmt.Sprint("attachment;filename=", archiveName),
+	)
 	responseWriter.WriteHeader(http.StatusOK)
-	responseWriter.Write(outImageBytes)
+	responseWriter.Write(archiveBytes)
 	return webserver.SkipResponseHandling()
 }
