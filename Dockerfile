@@ -20,6 +20,6 @@ COPY --from=builder /go/bin/image-processor /go/bin/image-processor
 
 WORKDIR /go/bin
 
-EXPOSE 18605
+EXPOSE 8080
 
 ENTRYPOINT ./image-processor
