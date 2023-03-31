@@ -57,7 +57,7 @@ const INDEX_PAGE_CONTENT string = `<html>
 	  <br />
       <label>Name prefix:&nbsp;</label>
       <input type="text" id="name_prefix"
-	    name="name_prefix" value="image-out" />
+	    name="name_prefix" value="image" />
       <br />
       <label>Quality:&nbsp;</label>
       <input type="text" id="quality"
@@ -93,7 +93,7 @@ func indexAction(session webserver.Session) (interface{}, error) {
 func getImageBytes(multipartForm *multipart.Form, filename string) ([][]byte, error) {
 	var files, found = multipartForm.File[filename]
 	if !found || len(files) < 1 {
-		return nil, fmt.Errorf("unable to load file for %v", filename)
+		return nil, nil
 	}
 	var allBytes = make([][]byte, 0, len(files))
 	for _, file := range files {
@@ -110,6 +110,47 @@ func getImageBytes(multipartForm *multipart.Form, filename string) ([][]byte, er
 		allBytes = append(allBytes, buffer.Bytes())
 	}
 	return allBytes, nil
+}
+
+func balanceImageBytes(
+	leftImageBytes [][]byte,
+	rightImageBytes [][]byte,
+) ([][]byte, [][]byte, error) {
+	if len(leftImageBytes) == 0 {
+		if len(rightImageBytes) == 0 {
+			// no data loaded, error
+			return nil, nil, fmt.Errorf("no images loaded at all")
+		} else {
+			// balance right to left
+			balancedLeft := make([][]byte, len(rightImageBytes)/2)
+			balancedRight := make([][]byte, len(rightImageBytes)/2)
+			for i, bytes := range rightImageBytes {
+				if i % 2 == 0 {
+					balancedLeft[i/2] = bytes
+				} else {
+					balancedRight[i/2] = bytes
+				}
+			}
+			return balancedLeft, balancedRight, nil
+		}
+	} else {
+		if len(rightImageBytes) == 0 {
+			// balance left to right
+			balancedLeft := make([][]byte, len(leftImageBytes)/2)
+			balancedRight := make([][]byte, len(leftImageBytes)/2)
+			for i, bytes := range leftImageBytes {
+				if i % 2 == 0 {
+					balancedLeft[i/2] = bytes
+				} else {
+					balancedRight[i/2] = bytes
+				}
+			}
+			return balancedLeft, balancedRight, nil
+		} else {
+			// assume all good, no balance needed
+			return leftImageBytes, rightImageBytes, nil
+		}
+	}
 }
 
 func getCheckboxValue(multipartForm *multipart.Form, key string) bool {
@@ -157,6 +198,10 @@ func processAction(session webserver.Session) (interface{}, error) {
 	var rightImageBytes, rightImageErr = getImageBytes(request.MultipartForm, "right_image")
 	if rightImageErr != nil {
 		return nil, rightImageErr
+	}
+	leftImageBytes, rightImageBytes, balanceErr := balanceImageBytes(leftImageBytes, rightImageBytes)
+	if balanceErr != nil {
+		return nil, balanceErr
 	}
 	var leftWatermarkOnRight = getCheckboxValue(
 		request.MultipartForm,
