@@ -7,7 +7,7 @@ const APP_VERSION string = `1.0.6`
 func main() {
 	var application = webserver.NewApplication(
 		"ImageProcessor",
-		8080,
+		":8080",
 		APP_VERSION,
 		&myCustomization{},
 	)
