@@ -2,7 +2,7 @@ package main
 
 import webserver "github.com/zhongjie-cai/web-server"
 
-const APP_VERSION string = `1.0.6`
+const APP_VERSION string = `1.0.7`
 
 func main() {
 	var application = webserver.NewApplication(
