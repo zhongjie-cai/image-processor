@@ -10,42 +10,27 @@ import (
 func getZipName(namePrefix string) string {
 	return fmt.Sprint(
 		namePrefix,
-		"-",
+		"_",
 		time.Now().Unix(),
 	)
 }
 
-func getImageName(index int, namePrefix string, saveAsPNG bool) string {
-	var suffix = ".jpg"
-	if saveAsPNG {
-		suffix = ".png"
-	}
-	return fmt.Sprint(
-		namePrefix,
-		"-",
-		index,
-		suffix,
-	)
-}
-
 func generateArchive(
-	outImageBytes [][]byte,
+	outImageBytes []imageBytes,
 	namePrefix string,
-	saveAsPNG bool,
 ) ([]byte, string, error) {
 	var buffer bytes.Buffer
 	var zipName = getZipName(namePrefix)
 	if len(outImageBytes) == 1 {
-		return outImageBytes[0], getImageName(0, zipName, saveAsPNG), nil
+		return outImageBytes[0].bytes, outImageBytes[0].name, nil
 	}
 	var zipper = zip.NewWriter(&buffer)
-	for i, bytes := range outImageBytes {
-		var imageName = getImageName(i, zipName, saveAsPNG)
-		var writer, err = zipper.Create(imageName)
+	for _, imageBytes := range outImageBytes {
+		var writer, err = zipper.Create(imageBytes.name)
 		if err != nil {
 			return nil, "", err
 		}
-		writer.Write(bytes)
+		writer.Write(imageBytes.bytes)
 	}
 	var err = zipper.Close()
 	if err != nil {

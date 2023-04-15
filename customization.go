@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -57,7 +58,7 @@ const INDEX_PAGE_CONTENT string = `<html>
 	  <br />
       <label>Name prefix:&nbsp;</label>
       <input type="text" id="name_prefix"
-	    name="name_prefix" value="image" />
+	    name="name_prefix" value="IMG" />
       <br />
       <label>Quality:&nbsp;</label>
       <input type="text" id="quality"
@@ -90,12 +91,12 @@ func indexAction(session webserver.Session) (interface{}, error) {
 	return webserver.SkipResponseHandling()
 }
 
-func getImageBytes(multipartForm *multipart.Form, filename string) ([][]byte, error) {
+func getImageBytes(multipartForm *multipart.Form, filename string) ([]imageBytes, error) {
 	var files, found = multipartForm.File[filename]
 	if !found || len(files) < 1 {
 		return nil, nil
 	}
-	var allBytes = make([][]byte, 0, len(files))
+	var allBytes = make([]imageBytes, 0, len(files))
 	for _, file := range files {
 		var imageFile, imageErr = file.Open()
 		if imageErr != nil {
@@ -107,23 +108,32 @@ func getImageBytes(multipartForm *multipart.Form, filename string) ([][]byte, er
 		if bufferErr != nil {
 			return nil, bufferErr
 		}
-		allBytes = append(allBytes, buffer.Bytes())
+		allBytes = append(allBytes, imageBytes{
+			bytes: buffer.Bytes(),
+			name: file.Filename,
+		})
 	}
 	return allBytes, nil
 }
 
 func balanceImageBytes(
-	leftImageBytes [][]byte,
-	rightImageBytes [][]byte,
-) ([][]byte, [][]byte, error) {
+	leftImageBytes []imageBytes,
+	rightImageBytes []imageBytes,
+) ([]imageBytes, []imageBytes, error) {
+	sort.SliceStable(leftImageBytes, func(i, j int) bool {
+		return leftImageBytes[i].name < leftImageBytes[j].name
+	})
+	sort.SliceStable(rightImageBytes, func(i, j int) bool {
+		return rightImageBytes[i].name < rightImageBytes[j].name
+	})
 	if len(leftImageBytes) == 0 {
 		if len(rightImageBytes) == 0 {
 			// no data loaded, error
 			return nil, nil, fmt.Errorf("no images loaded at all")
 		} else {
 			// balance right to left
-			balancedLeft := make([][]byte, len(rightImageBytes)/2)
-			balancedRight := make([][]byte, len(rightImageBytes)/2)
+			balancedLeft := make([]imageBytes, len(rightImageBytes)/2)
+			balancedRight := make([]imageBytes, len(rightImageBytes)/2)
 			for i, bytes := range rightImageBytes {
 				if i % 2 == 0 {
 					balancedLeft[i/2] = bytes
@@ -136,8 +146,8 @@ func balanceImageBytes(
 	} else {
 		if len(rightImageBytes) == 0 {
 			// balance left to right
-			balancedLeft := make([][]byte, len(leftImageBytes)/2)
-			balancedRight := make([][]byte, len(leftImageBytes)/2)
+			balancedLeft := make([]imageBytes, len(leftImageBytes)/2)
+			balancedRight := make([]imageBytes, len(leftImageBytes)/2)
 			for i, bytes := range leftImageBytes {
 				if i % 2 == 0 {
 					balancedLeft[i/2] = bytes
@@ -216,6 +226,7 @@ func processAction(session webserver.Session) (interface{}, error) {
 		request.MultipartForm,
 		"save_as_png",
 	)
+	var namePrefix = getNamePrefix(request.MultipartForm)
 	var outImageBytes, outImageErr = processImage(
 		leftImageBytes,
 		leftWatermarkOnRight,
@@ -223,15 +234,14 @@ func processAction(session webserver.Session) (interface{}, error) {
 		rightleftWatermarkOnRight,
 		quality,
 		saveAsPNG,
+		namePrefix,
 	)
 	if outImageErr != nil {
 		return nil, outImageErr
 	}
-	var namePrefix = getNamePrefix(request.MultipartForm)
 	var archiveBytes, archiveName, archiveErr = generateArchive(
 		outImageBytes,
 		namePrefix,
-		saveAsPNG,
 	)
 	if archiveErr != nil {
 		return nil, archiveErr

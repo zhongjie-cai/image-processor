@@ -3,14 +3,21 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
+	"time"
 )
 
-func readImage(imageBytes []byte, needInvert bool) (image.Image, error) {
-	var reader = bytes.NewReader(imageBytes)
+type imageBytes struct {
+	bytes []byte
+	name  string
+}
+
+func readImage(imageBytes imageBytes, needInvert bool) (image.Image, error) {
+	var reader = bytes.NewReader(imageBytes.bytes)
 	var decodedImage, _, decodeErr = image.Decode(reader)
 	if decodeErr != nil {
 		return nil, decodeErr
@@ -92,19 +99,38 @@ func writeImage(output image.Image, quality int, saveAsPNG bool) ([]byte, error)
 	return buffer.Bytes(), nil
 }
 
+func getImageName(namePrefix string, saveAsPNG bool) string {
+	now := time.Now()
+	if saveAsPNG {
+		return fmt.Sprintf(
+			"%v_%v_%09d.png",
+			namePrefix,
+			now.Format("20060102_150405"),
+			now.Nanosecond(),
+		)
+	}
+	return fmt.Sprintf(
+		"%v_%v_%09d.jpg",
+		namePrefix,
+		now.Format("20060102_150405"),
+		now.Nanosecond(),
+	)
+}
+
 func processImage(
-	leftImageBytes [][]byte,
+	leftImageBytes []imageBytes,
 	leftWatermarkOnRight bool,
-	rightImageBytes [][]byte,
+	rightImageBytes []imageBytes,
 	rightWatermarkOnRight bool,
 	quality int,
 	saveAsPNG bool,
-) ([][]byte, error) {
+	namePrefix string,
+) ([]imageBytes, error) {
 	var count = len(leftImageBytes)
 	if count > len(rightImageBytes) {
 		count = len(rightImageBytes)
 	}
-	var allBytes = make([][]byte, 0, count)
+	var allBytes = make([]imageBytes, 0, count)
 	for i := 0; i < count; i++ {
 		var leftImage, leftImageErr = readImage(
 			leftImageBytes[i],
@@ -132,7 +158,10 @@ func processImage(
 		if imageOutErr != nil {
 			return nil, imageOutErr
 		}
-		allBytes = append(allBytes, imageOutBytes)
+		allBytes = append(allBytes, imageBytes{
+			bytes: imageOutBytes,
+			name: getImageName(namePrefix, saveAsPNG),
+		})
 	}
 	return allBytes, nil
 }
