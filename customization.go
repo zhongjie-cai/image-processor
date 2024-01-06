@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"mime/multipart"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,18 +17,26 @@ type myCustomization struct {
 	webserver.DefaultCustomization
 }
 
+func (customization *myCustomization) ServerCert() *tls.Certificate {
+	var cert, err = tls.LoadX509KeyPair("/data/v2ray.crt", "/data/v2ray.key")
+	if err != nil {
+		return nil
+	}
+	return &cert
+}
+
 func (customization *myCustomization) Routes() []webserver.Route {
 	return []webserver.Route{
 		{
-			Endpoint: "Root",
-			Method: http.MethodGet,
-			Path: "/",
+			Endpoint:   "Root",
+			Method:     http.MethodGet,
+			Path:       "/",
 			ActionFunc: indexAction,
 		},
 		{
-			Endpoint: "Process",
-			Method: http.MethodPost,
-			Path: "/",
+			Endpoint:   "Process",
+			Method:     http.MethodPost,
+			Path:       "/",
 			ActionFunc: processAction,
 		},
 	}
@@ -40,34 +48,17 @@ const INDEX_PAGE_CONTENT string = `<html>
   </header>
   <body>
     <form method="POST" enctype="multipart/form-data">
-      <label>Left image:&nbsp;</label>
-      <input type="file" id="left_image" name="left_image"
+      <label>Source Image:&nbsp;</label>
+      <input type="file" id="source_image" name="source_image" />
+      <br />
+      <label>Target image:&nbsp;</label>
+      <input type="file" id="target_image" name="target_image"
 	    multiple="multiple" />
       <br />
-	  <label>Left image watermark is on right side:&nbsp;</label>
-	  <input type="checkbox" name="left_image_water_mark_on_right"
-	    id="left_image_water_mark_on_right" value="true" checked>
-	  <br />
-      <label>Right image:&nbsp;</label>
-      <input type="file" id="right_image" name="right_image"
-	    multiple="multiple" />
-      <br />
-	  <label>Right image watermark is on right side:&nbsp;</label>
-	  <input type="checkbox" name="right_image_water_mark_on_right"
-	    id="right_image_water_mark_on_right" value="true" checked>
-	  <br />
       <label>Name prefix:&nbsp;</label>
       <input type="text" id="name_prefix"
 	    name="name_prefix" value="IMG" />
       <br />
-      <label>Quality:&nbsp;</label>
-      <input type="text" id="quality"
-	    name="quality" value="100" />
-      <br />
-	  <label>Save as PNG:&nbsp;</label>
-	  <input type="checkbox" name="save_as_png"
-	    id="save_as_png" value="true">
-	  <br />
       <input type="submit" />
 	  <br />
 	  <br />
@@ -110,81 +101,10 @@ func getImageBytes(multipartForm *multipart.Form, filename string) ([]imageBytes
 		}
 		allBytes = append(allBytes, imageBytes{
 			bytes: buffer.Bytes(),
-			name: file.Filename,
+			name:  file.Filename,
 		})
 	}
 	return allBytes, nil
-}
-
-func balanceImageBytes(
-	leftImageBytes []imageBytes,
-	rightImageBytes []imageBytes,
-) ([]imageBytes, []imageBytes, error) {
-	sort.SliceStable(leftImageBytes, func(i, j int) bool {
-		return leftImageBytes[i].name < leftImageBytes[j].name
-	})
-	sort.SliceStable(rightImageBytes, func(i, j int) bool {
-		return rightImageBytes[i].name < rightImageBytes[j].name
-	})
-	if len(leftImageBytes) == 0 {
-		if len(rightImageBytes) == 0 {
-			// no data loaded, error
-			return nil, nil, fmt.Errorf("no images loaded at all")
-		} else {
-			// balance right to left
-			balancedLeft := make([]imageBytes, len(rightImageBytes)/2)
-			balancedRight := make([]imageBytes, len(rightImageBytes)/2)
-			for i, bytes := range rightImageBytes {
-				if i % 2 == 0 {
-					balancedLeft[i/2] = bytes
-				} else {
-					balancedRight[i/2] = bytes
-				}
-			}
-			return balancedLeft, balancedRight, nil
-		}
-	} else {
-		if len(rightImageBytes) == 0 {
-			// balance left to right
-			balancedLeft := make([]imageBytes, len(leftImageBytes)/2)
-			balancedRight := make([]imageBytes, len(leftImageBytes)/2)
-			for i, bytes := range leftImageBytes {
-				if i % 2 == 0 {
-					balancedLeft[i/2] = bytes
-				} else {
-					balancedRight[i/2] = bytes
-				}
-			}
-			return balancedLeft, balancedRight, nil
-		} else {
-			// assume all good, no balance needed
-			return leftImageBytes, rightImageBytes, nil
-		}
-	}
-}
-
-func getCheckboxValue(multipartForm *multipart.Form, key string) bool {
-	var value, found = multipartForm.Value[key]
-	if !found {
-		return false
-	}
-	var checked, err =strconv.ParseBool(value[0])
-	if err != nil {
-		return false
-	}
-	return checked
-}
-
-func getImageQuality(multipartForm *multipart.Form) int {
-	var qualities, found = multipartForm.Value["quality"]
-	if !found || len(qualities) == 0 {
-		return 100
-	}
-	var quality, err = strconv.Atoi(qualities[0])
-	if err != nil {
-		return 100
-	}
-	return quality
 }
 
 func getNamePrefix(multipartForm *multipart.Form) string {
@@ -201,39 +121,24 @@ func processAction(session webserver.Session) (interface{}, error) {
 	if parseErr != nil {
 		return nil, parseErr
 	}
-	var leftImageBytes, leftImageErr = getImageBytes(request.MultipartForm, "left_image")
-	if leftImageErr != nil {
-		return nil, leftImageErr
-	}
-	var rightImageBytes, rightImageErr = getImageBytes(request.MultipartForm, "right_image")
-	if rightImageErr != nil {
-		return nil, rightImageErr
-	}
-	leftImageBytes, rightImageBytes, balanceErr := balanceImageBytes(leftImageBytes, rightImageBytes)
-	if balanceErr != nil {
-		return nil, balanceErr
-	}
-	var leftWatermarkOnRight = getCheckboxValue(
+	var sourceImageBytes, sourceImageErr = getImageBytes(
 		request.MultipartForm,
-		"left_image_water_mark_on_right",
+		"source_image",
 	)
-	var rightleftWatermarkOnRight = getCheckboxValue(
+	if sourceImageErr != nil {
+		return nil, sourceImageErr
+	}
+	var targetImageBytes, targetImageErr = getImageBytes(
 		request.MultipartForm,
-		"right_image_water_mark_on_right",
+		"target_image",
 	)
-	var quality = getImageQuality(request.MultipartForm)
-	var saveAsPNG = getCheckboxValue(
-		request.MultipartForm,
-		"save_as_png",
-	)
+	if targetImageErr != nil {
+		return nil, targetImageErr
+	}
 	var namePrefix = getNamePrefix(request.MultipartForm)
 	var outImageBytes, outImageErr = processImage(
-		leftImageBytes,
-		leftWatermarkOnRight,
-		rightImageBytes,
-		rightleftWatermarkOnRight,
-		quality,
-		saveAsPNG,
+		sourceImageBytes[0],
+		targetImageBytes,
 		namePrefix,
 	)
 	if outImageErr != nil {

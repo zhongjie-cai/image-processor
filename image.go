@@ -3,27 +3,41 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image"
-	"image/draw"
-	"image/jpeg"
 	"image/png"
+	"net/http"
 	"time"
 )
+
+const IMAGE_PREFIX string = "data:image/png;base64,"
+
+type reactorRequest struct {
+	SourceImage  string `json:"source_image"`
+	TargetImage  string `json:"target_image"`
+	FaceRestorer string `json:"face_restorer"`
+	GenderSource int    `json:"gender_source"`
+	GenderTarget int    `json:"gender_target"`
+	Device       string `json:"device"`
+	MaskFace     int    `json:"mask_face"`
+}
+
+type reactorResponse struct {
+	Image string `json:"image"`
+}
 
 type imageBytes struct {
 	bytes []byte
 	name  string
 }
 
-func readImage(imageBytes imageBytes, needInvert bool) (image.Image, error) {
-	var reader = bytes.NewReader(imageBytes.bytes)
+func flipImage(imageBytes []byte) ([]byte, error) {
+	var reader = bytes.NewReader(imageBytes)
 	var decodedImage, _, decodeErr = image.Decode(reader)
 	if decodeErr != nil {
 		return nil, decodeErr
-	}
-	if !needInvert {
-		return decodedImage, nil
 	}
 	var bounds = decodedImage.Bounds().Max
 	var rect = image.Rect(0, 0, bounds.X, bounds.Y)
@@ -34,83 +48,25 @@ func readImage(imageBytes imageBytes, needInvert bool) (image.Image, error) {
 				x,
 				y,
 				decodedImage.At(
-					bounds.X - x,
+					bounds.X-x,
 					y,
 				),
 			)
 		}
 	}
-	return outputImage, nil
-}
-
-func cropImage(input image.Image) image.Image {
-	var bounds = input.Bounds().Max
-	var x1=bounds.X/ 2
-	var y1 = bounds.Y
-	var sp = image.Pt(0, 0)
-	var crops = image.Rect(0, 0, x1, y1)
-	var output = image.NewNRGBA(crops)
-	draw.Draw(output, crops, input, sp, draw.Src)
-	return output
-}
-
-func mergeImage(left image.Image, right image.Image) image.Image {
-	var boundsLeft = left.Bounds().Max
-	var boundsRight = right.Bounds().Max
-	var width = boundsLeft.X + boundsRight.X
-	var height = boundsLeft.Y
-	if height > boundsRight.Y {
-		height = boundsRight.Y
-	}
-	var merge = image.Rect(0, 0, width, height)
-	var output = image.NewNRGBA(merge)
-	var sp = image.Pt(0, 0)
-	var leftRect = image.Rect(0, 0, boundsLeft.X, boundsLeft.Y)
-	draw.Draw(output, leftRect, left, sp, draw.Src)
-	for y := 0; y < height; y++ {
-		for x := boundsLeft.X; x < boundsLeft.X+boundsRight.X; x++ {
-			output.Set(
-				x,
-				y,
-				right.At(
-					boundsRight.X - 1 - x + boundsLeft.X,
-					y,
-				),
-			)
-		}
-	}
-	return output
-}
-
-func writeImage(output image.Image, quality int, saveAsPNG bool) ([]byte, error) {
 	var buffer bytes.Buffer
 	var writer = bufio.NewWriter(&buffer)
-	if saveAsPNG {
-		var pngErr = png.Encode(writer, output)
-		if pngErr != nil {
-			return nil, pngErr
-		}
-		return buffer.Bytes(), nil
-	}
-	var jpegErr = jpeg.Encode(writer, output, &jpeg.Options{Quality: quality})
-	if jpegErr != nil {
-		return nil, jpegErr
+	var pngErr = png.Encode(writer, outputImage)
+	if pngErr != nil {
+		return nil, pngErr
 	}
 	return buffer.Bytes(), nil
 }
 
-func getImageName(namePrefix string, saveAsPNG bool) string {
-	now := time.Now()
-	if saveAsPNG {
-		return fmt.Sprintf(
-			"%v_%v_%09d.png",
-			namePrefix,
-			now.Format("20060102_150405"),
-			now.Nanosecond(),
-		)
-	}
+func getImageName(namePrefix string) string {
+	var now = time.Now()
 	return fmt.Sprintf(
-		"%v_%v_%09d.jpg",
+		"%v_%v_%09d.png",
 		namePrefix,
 		now.Format("20060102_150405"),
 		now.Nanosecond(),
@@ -118,49 +74,69 @@ func getImageName(namePrefix string, saveAsPNG bool) string {
 }
 
 func processImage(
-	leftImageBytes []imageBytes,
-	leftWatermarkOnRight bool,
-	rightImageBytes []imageBytes,
-	rightWatermarkOnRight bool,
-	quality int,
-	saveAsPNG bool,
+	sourceImageByte imageBytes,
+	targetImageBytes []imageBytes,
 	namePrefix string,
 ) ([]imageBytes, error) {
-	var count = len(leftImageBytes)
-	if count > len(rightImageBytes) {
-		count = len(rightImageBytes)
-	}
+	var count = len(targetImageBytes)
 	var allBytes = make([]imageBytes, 0, count)
+	var srcImage = IMAGE_PREFIX + base64.StdEncoding.EncodeToString(
+		sourceImageByte.bytes,
+	)
 	for i := 0; i < count; i++ {
-		var leftImage, leftImageErr = readImage(
-			leftImageBytes[i],
-			!leftWatermarkOnRight,
+		var tarImage = IMAGE_PREFIX + base64.StdEncoding.EncodeToString(
+			targetImageBytes[i].bytes,
 		)
-		if leftImageErr != nil {
-			return nil, leftImageErr
+		var content, contentError = json.Marshal(
+			reactorRequest{
+				SourceImage:  srcImage,
+				TargetImage:  tarImage,
+				FaceRestorer: "CodeFormer",
+				GenderSource: 1,
+				GenderTarget: 1,
+				Device:       "CUDA",
+				MaskFace:     1,
+			},
+		)
+		if contentError != nil {
+			return nil, contentError
 		}
-		var rightImage, rightImageErr = readImage(
-			rightImageBytes[i],
-			!rightWatermarkOnRight,
+		var body = bytes.NewReader(content)
+		var request, requestError = http.NewRequest(
+			http.MethodPost,
+			"http://localhost:7860/reactor/image",
+			body,
 		)
-		if rightImageErr != nil {
-			return nil, rightImageErr
+		if requestError != nil {
+			return nil, requestError
 		}
-		var imageOut = mergeImage(
-			cropImage(leftImage),
-			cropImage(rightImage),
+		var response, responseError = http.DefaultClient.Do(request)
+		if responseError != nil {
+			return nil, responseError
+		}
+		if response.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("wrong response [%d]: {%s}", response.StatusCode, response.Status)
+		}
+		var buffer = &bytes.Buffer{}
+		buffer.ReadFrom(response.Body)
+		var respImg reactorResponse
+		var respImgError = json.Unmarshal(buffer.Bytes(), &respImg)
+		if respImgError != nil {
+			return nil, respImgError
+		}
+		var resultImg, resultImgError = base64.StdEncoding.DecodeString(
+			respImg.Image,
 		)
-		var imageOutBytes, imageOutErr = writeImage(
-			imageOut,
-			quality,
-			saveAsPNG,
-		)
-		if imageOutErr != nil {
-			return nil, imageOutErr
+		if resultImgError != nil {
+			return nil, resultImgError
+		}
+		var flipImg, flipImgError = flipImage(resultImg)
+		if flipImgError != nil {
+			return nil, flipImgError
 		}
 		allBytes = append(allBytes, imageBytes{
-			bytes: imageOutBytes,
-			name: getImageName(namePrefix, saveAsPNG),
+			bytes: flipImg,
+			name:  getImageName(namePrefix),
 		})
 	}
 	return allBytes, nil
