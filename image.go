@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"time"
@@ -33,15 +34,15 @@ type imageBytes struct {
 	name  string
 }
 
-func flipImage(imageBytes []byte) ([]byte, error) {
+func flipImage(imageBytes []byte, quality int) ([]byte, error) {
 	var reader = bytes.NewReader(imageBytes)
-	var decodedImage, _, decodeErr = image.Decode(reader)
+	var decodedImage, decodeErr = png.Decode(reader)
 	if decodeErr != nil {
 		return nil, decodeErr
 	}
 	var bounds = decodedImage.Bounds().Max
 	var rect = image.Rect(0, 0, bounds.X, bounds.Y)
-	var outputImage = image.NewNRGBA(rect)
+	var outputImage = image.NewRGBA(rect)
 	for y := 0; y < bounds.Y; y++ {
 		for x := 0; x < bounds.X; x++ {
 			outputImage.Set(
@@ -56,9 +57,15 @@ func flipImage(imageBytes []byte) ([]byte, error) {
 	}
 	var buffer bytes.Buffer
 	var writer = bufio.NewWriter(&buffer)
-	var pngErr = png.Encode(writer, outputImage)
-	if pngErr != nil {
-		return nil, pngErr
+	var jpegErr = jpeg.Encode(
+		writer,
+		outputImage,
+		&jpeg.Options{
+			Quality: quality,
+		},
+	)
+	if jpegErr != nil {
+		return nil, jpegErr
 	}
 	return buffer.Bytes(), nil
 }
@@ -66,7 +73,7 @@ func flipImage(imageBytes []byte) ([]byte, error) {
 func getImageName(namePrefix string) string {
 	var now = time.Now()
 	return fmt.Sprintf(
-		"%v_%v_%09d.png",
+		"%v_%v_%09d.jpg",
 		namePrefix,
 		now.Format("20060102_150405"),
 		now.Nanosecond(),
@@ -77,6 +84,8 @@ func processImage(
 	sourceImageByte imageBytes,
 	targetImageBytes []imageBytes,
 	namePrefix string,
+	reactorAPI string,
+	quality int,
 ) ([]imageBytes, error) {
 	var count = len(targetImageBytes)
 	var allBytes = make([]imageBytes, 0, count)
@@ -92,8 +101,6 @@ func processImage(
 				SourceImage:  srcImage,
 				TargetImage:  tarImage,
 				FaceRestorer: "CodeFormer",
-				GenderSource: 1,
-				GenderTarget: 1,
 				Device:       "CUDA",
 				MaskFace:     1,
 			},
@@ -104,7 +111,7 @@ func processImage(
 		var body = bytes.NewReader(content)
 		var request, requestError = http.NewRequest(
 			http.MethodPost,
-			"http://localhost:7860/reactor/image",
+			reactorAPI,
 			body,
 		)
 		if requestError != nil {
@@ -130,7 +137,7 @@ func processImage(
 		if resultImgError != nil {
 			return nil, resultImgError
 		}
-		var flipImg, flipImgError = flipImage(resultImg)
+		var flipImg, flipImgError = flipImage(resultImg, quality)
 		if flipImgError != nil {
 			return nil, flipImgError
 		}

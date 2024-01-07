@@ -59,6 +59,14 @@ const INDEX_PAGE_CONTENT string = `<html>
       <input type="text" id="name_prefix"
 	    name="name_prefix" value="IMG" />
       <br />
+      <label>Reactor API:&nbsp;</label>
+      <input type="text" id="reactor_api"
+	    name="reactor_api" value="http://localhost:7860/reactor/image" />
+      <br />
+      <label>Quality:&nbsp;</label>
+      <input type="text" id="quality"
+	    name="quality" value="100" />
+      <br />
       <input type="submit" />
 	  <br />
 	  <br />
@@ -110,9 +118,29 @@ func getImageBytes(multipartForm *multipart.Form, filename string) ([]imageBytes
 func getNamePrefix(multipartForm *multipart.Form) string {
 	var namePrefixes, found = multipartForm.Value["name_prefix"]
 	if !found || len(namePrefixes) == 0 {
-		namePrefixes = []string{"image-out"}
+		namePrefixes = []string{"IMG"}
 	}
 	return namePrefixes[0]
+}
+
+func getReactorAPI(multipartForm *multipart.Form) string {
+	var reactorAPI, found = multipartForm.Value["reactor_api"]
+	if !found || len(reactorAPI) == 0 {
+		reactorAPI = []string{"http://localhost:7860/reactor/image"}
+	}
+	return reactorAPI[0]
+}
+
+func getImageQuality(multipartForm *multipart.Form) int {
+	var qualities, found = multipartForm.Value["quality"]
+	if !found || len(qualities) == 0 {
+		return 100
+	}
+	var quality, err = strconv.Atoi(qualities[0])
+	if err != nil {
+		return 100
+	}
+	return quality
 }
 
 func processAction(session webserver.Session) (interface{}, error) {
@@ -136,10 +164,14 @@ func processAction(session webserver.Session) (interface{}, error) {
 		return nil, targetImageErr
 	}
 	var namePrefix = getNamePrefix(request.MultipartForm)
+	var reactorAPI = getReactorAPI(request.MultipartForm)
+	var quality = getImageQuality(request.MultipartForm)
 	var outImageBytes, outImageErr = processImage(
 		sourceImageBytes[0],
 		targetImageBytes,
 		namePrefix,
+		reactorAPI,
+		quality,
 	)
 	if outImageErr != nil {
 		return nil, outImageErr

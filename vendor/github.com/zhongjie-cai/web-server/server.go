@@ -81,7 +81,7 @@ func createServer(
 			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 			tlsConfig.ClientCAs = caCertPool
 		} else {
-			tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+			tlsConfig.ClientAuth = tls.RequireAnyClientCert
 		}
 	}
 	return &http.Server{
