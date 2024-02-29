@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,15 @@ func (customization *myCustomization) Routes() []webserver.Route {
 			Path:       "/",
 			ActionFunc: processAction,
 		},
+		{
+			Endpoint:   "Download",
+			Method:     http.MethodGet,
+			Path:       "/{fileName}",
+			ActionFunc: downloadAction,
+			Parameters: map[string]webserver.ParameterType{
+				"fileName": webserver.ParameterTypeAnything,
+			},
+		},
 	}
 }
 
@@ -48,6 +58,9 @@ const INDEX_PAGE_CONTENT string = `<html>
   </header>
   <body>
     <form method="POST" enctype="multipart/form-data">
+	  <label>App Version = ` + APP_VERSION + `</label>
+	  <br />
+	  <br />
       <label>Source Image:&nbsp;</label>
       <input type="file" id="source_image" name="source_image" />
       <br />
@@ -70,12 +83,47 @@ const INDEX_PAGE_CONTENT string = `<html>
       <input type="submit" />
 	  <br />
 	  <br />
-	  <label>App Version = ` + APP_VERSION + `</label>
+	  <div>
+	    %s
+	  </div>
     </form>
   </body>
 </html>`
 
+func getListOfFilesHtml() string {
+	var allEntries, allEntriesError = os.ReadDir(".")
+	if allEntriesError != nil {
+		return fmt.Sprint(
+			"Unable to read working directory entries: ",
+			allEntriesError.Error(),
+		)
+	}
+	var builder strings.Builder
+	var counter = 0
+	for _, entry := range allEntries {
+		var entryName = entry.Name()
+		if strings.HasSuffix(entryName, ".error.log") ||
+			strings.HasSuffix(entryName, ".cache.zip") {
+			counter++
+			builder.WriteString(
+				fmt.Sprintf(
+					"<a href=\".\\%s\">%04d - %s</a><br />",
+					entryName,
+					counter,
+					entryName,
+				),
+			)
+		}
+	}
+	if counter == 0 {
+		return "No .error.log or .cache.zip found locally."
+	}
+	return builder.String()
+}
+
 func indexAction(session webserver.Session) (interface{}, error) {
+	var listOfFiles = getListOfFilesHtml()
+	var pageContent = fmt.Sprintf(INDEX_PAGE_CONTENT, listOfFiles)
 	var request = session.GetRequest()
 	var responseWriter = session.GetResponseWriter()
 	http.ServeContent(
@@ -84,7 +132,7 @@ func indexAction(session webserver.Session) (interface{}, error) {
 		"index.html",
 		time.Now(),
 		strings.NewReader(
-			INDEX_PAGE_CONTENT,
+			pageContent,
 		),
 	)
 	return webserver.SkipResponseHandling()
@@ -143,6 +191,40 @@ func getImageQuality(multipartForm *multipart.Form) int {
 	return quality
 }
 
+func doProcessing(
+	sourceImageBytes []imageBytes,
+	targetImageBytes []imageBytes,
+	namePrefix string,
+	reactorAPI string,
+	quality int,
+) {
+	var outImageBytes, outImageErr = processImage(
+		sourceImageBytes[0],
+		targetImageBytes,
+		namePrefix,
+		reactorAPI,
+		quality,
+	)
+	if outImageErr != nil {
+		writeErrorLog(
+			namePrefix,
+			outImageErr,
+		)
+		return 
+	}
+	var archiveErr = writeArchive(
+		outImageBytes,
+		namePrefix,
+	)
+	if archiveErr != nil {
+		writeErrorLog(
+			namePrefix,
+			outImageErr,
+		)
+		return 
+	}
+}
+
 func processAction(session webserver.Session) (interface{}, error) {
 	var request = session.GetRequest()
 	var parseErr = request.ParseMultipartForm(2097152)
@@ -166,22 +248,31 @@ func processAction(session webserver.Session) (interface{}, error) {
 	var namePrefix = getNamePrefix(request.MultipartForm)
 	var reactorAPI = getReactorAPI(request.MultipartForm)
 	var quality = getImageQuality(request.MultipartForm)
-	var outImageBytes, outImageErr = processImage(
-		sourceImageBytes[0],
+	go doProcessing(
+		sourceImageBytes,
 		targetImageBytes,
 		namePrefix,
 		reactorAPI,
 		quality,
 	)
-	if outImageErr != nil {
-		return nil, outImageErr
-	}
-	var archiveBytes, archiveName, archiveErr = generateArchive(
-		outImageBytes,
-		namePrefix,
+	var responseWriter = session.GetResponseWriter()
+	responseWriter.WriteHeader(http.StatusNoContent)
+	return webserver.SkipResponseHandling()
+
+}
+
+func downloadAction(session webserver.Session) (interface{}, error) {
+	var fileName string
+	var fileNameError = session.GetRequestParameter(
+		"fileName",
+		&fileName,
 	)
-	if archiveErr != nil {
-		return nil, archiveErr
+	if fileNameError != nil {
+		return nil, fileNameError
+	}
+	var fileBytes, fileBytesError = os.ReadFile(fileName)
+	if fileBytesError != nil {
+		return nil, fileBytesError
 	}
 	var responseWriter = session.GetResponseWriter()
 	responseWriter.Header().Set(
@@ -190,13 +281,13 @@ func processAction(session webserver.Session) (interface{}, error) {
 	)
 	responseWriter.Header().Set(
 		"Content-Length",
-		strconv.Itoa(len(archiveBytes)),
+		strconv.Itoa(len(fileBytes)),
 	)
 	responseWriter.Header().Set(
 		"Content-Disposition",
-		fmt.Sprint("attachment;filename=", archiveName),
+		fmt.Sprint("attachment;filename=", fileName),
 	)
 	responseWriter.WriteHeader(http.StatusOK)
-	responseWriter.Write(archiveBytes)
+	responseWriter.Write(fileBytes)
 	return webserver.SkipResponseHandling()
 }
