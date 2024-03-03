@@ -33,13 +33,6 @@ func writeArchive(
 ) error {
 	var buffer bytes.Buffer
 	var zipName = getZipName(namePrefix)
-	if len(outImageBytes) == 1 {
-		return os.WriteFile(
-			outImageBytes[0].name,
-			outImageBytes[0].bytes, 
-			0,
-		)
-	}
 	var zipper = zip.NewWriter(&buffer)
 	for _, imageBytes := range outImageBytes {
 		var writer, err = zipper.Create(imageBytes.name)
