@@ -142,7 +142,8 @@ func (customization *DefaultCustomization) Log(session Session, logType LogType,
 		return
 	}
 	fmtPrintf(
-		"<%v|%v> (%v|%v) [%v|%v] %v\n",
+		"[%s] <%v|%v> (%v|%v) [%v|%v] %v\n",
+		timeNow().Format(time.RFC3339Nano),
 		session.GetID(),
 		session.GetName(),
 		logType,

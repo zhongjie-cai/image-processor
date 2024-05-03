@@ -19,9 +19,12 @@ func getZipName(namePrefix string) string {
 func writeErrorLog(
 	namePrefix string,
 	errData error,
+	progress *progress,
 ) {
+	var filename = fmt.Sprint(namePrefix, ".error.log")
+	progress.file = filename
 	os.WriteFile(
-		fmt.Sprint(namePrefix, ".error.log"),
+		filename,
 		[]byte(errData.Error()),
 		0,
 	)
@@ -30,6 +33,7 @@ func writeErrorLog(
 func writeArchive(
 	outImageBytes []imageBytes,
 	namePrefix string,
+	progress *progress,
 ) error {
 	var buffer bytes.Buffer
 	var zipName = getZipName(namePrefix)
@@ -45,8 +49,10 @@ func writeArchive(
 	if err != nil {
 		return err
 	}
+	var filename = fmt.Sprint(zipName, ".cache.zip")
+	progress.file = filename
 	return os.WriteFile(
-		fmt.Sprint(zipName, ".cache.zip"),
+		filename,
 		buffer.Bytes(),
 		0,
 	)

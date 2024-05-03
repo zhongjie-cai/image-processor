@@ -80,19 +80,31 @@ func getImageName(namePrefix string) string {
 	)
 }
 
+func getErrorBytes(originalName string, errorData error) *imageBytes {
+	return &imageBytes{
+		name: fmt.Sprintf("%v.error.log", originalName),
+		bytes: []byte(fmt.Sprintf("Failed processing file %v: %v", originalName, errorData.Error())),
+	}
+}
+
 func processImage(
 	sourceImageByte imageBytes,
 	targetImageBytes []imageBytes,
 	namePrefix string,
 	reactorAPI string,
 	quality int,
-) ([]imageBytes, error) {
+	progress *progress,
+) []imageBytes {
 	var count = len(targetImageBytes)
 	var allBytes = make([]imageBytes, 0, count)
 	var srcImage = IMAGE_PREFIX + base64.StdEncoding.EncodeToString(
 		sourceImageByte.bytes,
 	)
 	for i := 0; i < count; i++ {
+		if progress != nil {
+			progress.current = i + 1
+		}
+		var originalName = targetImageBytes[i].name
 		var tarImage = IMAGE_PREFIX + base64.StdEncoding.EncodeToString(
 			targetImageBytes[i].bytes,
 		)
@@ -103,10 +115,14 @@ func processImage(
 				FaceRestorer: "CodeFormer",
 				Device:       "CUDA",
 				MaskFace:     1,
+				GenderSource: 1,
+				GenderTarget: 1,
 			},
 		)
 		if contentError != nil {
-			return nil, contentError
+			var errorBytes = getErrorBytes(originalName, contentError)
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		var body = bytes.NewReader(content)
 		var request, requestError = http.NewRequest(
@@ -115,36 +131,48 @@ func processImage(
 			body,
 		)
 		if requestError != nil {
-			return nil, requestError
+			var errorBytes = getErrorBytes(originalName, requestError)
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		var response, responseError = http.DefaultClient.Do(request)
 		if responseError != nil {
-			return nil, responseError
+			var errorBytes = getErrorBytes(originalName, responseError)
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("wrong response [%d]: {%s}", response.StatusCode, response.Status)
+			var errorBytes = getErrorBytes(originalName, fmt.Errorf("wrong response [%d]: {%s}", response.StatusCode, response.Status))
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		var buffer = &bytes.Buffer{}
 		buffer.ReadFrom(response.Body)
 		var respImg reactorResponse
 		var respImgError = json.Unmarshal(buffer.Bytes(), &respImg)
 		if respImgError != nil {
-			return nil, respImgError
+			var errorBytes = getErrorBytes(originalName, respImgError)
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		var resultImg, resultImgError = base64.StdEncoding.DecodeString(
 			respImg.Image,
 		)
 		if resultImgError != nil {
-			return nil, resultImgError
+			var errorBytes = getErrorBytes(originalName, respImgError)
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		var flipImg, flipImgError = flipImage(resultImg, quality)
 		if flipImgError != nil {
-			return nil, flipImgError
+			var errorBytes = getErrorBytes(originalName, flipImgError)
+			allBytes = append(allBytes, *errorBytes)
+			continue
 		}
 		allBytes = append(allBytes, imageBytes{
 			bytes: flipImg,
 			name:  getImageName(namePrefix),
 		})
 	}
-	return allBytes, nil
+	return allBytes
 }
