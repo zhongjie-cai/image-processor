@@ -8,11 +8,18 @@ import (
 	"time"
 )
 
-func getZipName(namePrefix string) string {
+func getZipName(namePrefix string, counter int) string {
+	var timeNow = time.Now()
 	return fmt.Sprint(
 		namePrefix,
 		"_",
-		time.Now().Unix(),
+		timeNow.Format("2006_01_02"),
+		"_",
+		fmt.Sprintf("%04d", counter),
+		"_",
+		timeNow.Format("15_04_05"),
+		"_",
+		timeNow.Nanosecond(),
 	)
 }
 
@@ -36,7 +43,7 @@ func writeArchive(
 	progress *progress,
 ) error {
 	var buffer bytes.Buffer
-	var zipName = getZipName(namePrefix)
+	var zipName = getZipName(namePrefix, progress.counter)
 	var zipper = zip.NewWriter(&buffer)
 	for _, imageBytes := range outImageBytes {
 		var writer, err = zipper.Create(imageBytes.name)

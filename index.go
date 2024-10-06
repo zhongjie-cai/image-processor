@@ -22,16 +22,15 @@ const INDEX_PAGE_CONTENT string = `<html>
     </style>
   </header>
   <body>
-    <form method="POST" enctype="multipart/form-data">
-      <label>App Version = ` + APP_VERSION + `</label>
-      <br />
-      <div>
-        %s
-      </div>
-      <br />
-      <label>Source Image:&nbsp;</label>
-      <input type="file" id="source_image" name="source_image" />
-      <br />
+	<label>App Version = ` + APP_VERSION + `</label>
+	<br />
+	<div>
+	%s
+	</div>
+	<br />
+	<label>--== Swapper ==--</label>
+	<br />
+    <form action="/process" method="POST" enctype="multipart/form-data">
       <label>Target image:&nbsp;</label>
       <input type="file" id="target_image" name="target_image"
         multiple="multiple" />
@@ -41,8 +40,8 @@ const INDEX_PAGE_CONTENT string = `<html>
         name="name_prefix" value="IMG" />
       <br />
       <label>Reactor API:&nbsp;</label>
-      <input type="text" id="reactor_api"
-        name="reactor_api" value="http://localhost:7860/reactor/image" />
+      <input type="text" id="reactor_api" name="reactor_api"
+	    value="http://localhost:7860/reactor/image" />
       <br />
       <label>Quality:&nbsp;</label>
       <input type="text" id="quality"
@@ -52,12 +51,33 @@ const INDEX_PAGE_CONTENT string = `<html>
       <input type="text" id="batches"
         name="batches" value="1" />
       <br />
+      <label>CodeFormer Weight:&nbsp;</label>
+      <input type="text" id="codeformerweight"
+        name="codeformerweight" value="0.9" />
+      <br />
       <input type="submit" />
       <br />
+    </form>
+
+	<br />
+	<div>
+	%s
+	</div>
+	<br />
+
+	<label>--== FaceModeler ==--</label>
+	<br />
+    <form action="/model" method="POST" enctype="multipart/form-data">
+      <label>Face image:&nbsp;</label>
+      <input type="file" id="face_image" name="face_image"
+        multiple="multiple" />
       <br />
-      <div>
-        %s
-      </div>
+      <label>Reactor API:&nbsp;</label>
+      <input type="text" id="reactor_api" name="reactor_api"
+	    value="http://localhost:7860/reactor/facemodels" />
+      <br />
+      <input type="submit" />
+      <br />
     </form>
   </body>
 </html>`

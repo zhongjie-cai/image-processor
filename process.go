@@ -15,11 +15,11 @@ import (
 )
 
 type item struct {
-	sourceImageBytes []imageBytes
 	targetImageBytes []imageBytes
 	namePrefix       string
 	reactorAPI       string
 	quality          int
+	weight           float64
 	batches          int
 	session          webserver.SessionLogging
 }
@@ -102,6 +102,18 @@ func getSplitBatches(multipartForm *multipart.Form) int {
 	return batch
 }
 
+func getCodeFormerWeight(multipartForm *multipart.Form) float64 {
+	var weights, found = multipartForm.Value["codeformerweight"]
+	if !found || len(weights) == 0 {
+		return 0.5
+	}
+	var weight, err = strconv.ParseFloat(weights[0], 64)
+	if err != nil {
+		return 0.5
+	}
+	return weight
+}
+
 func processBatch(
 	counter int,
 	batchItem item,
@@ -131,11 +143,11 @@ func processBatch(
 		batchItem.namePrefix,
 	)
 	var outImageBytes = processImage(
-		batchItem.sourceImageBytes[0],
 		batchItem.targetImageBytes[start:end],
 		batchItem.namePrefix,
 		batchItem.reactorAPI,
 		batchItem.quality,
+		batchItem.weight,
 		progress,
 	)
 	var archiveErr = writeArchive(
@@ -195,7 +207,7 @@ func doProcessing() {
 		var size = int(math.Ceil(count / float64(item.batches)))
 		for i := 0; i < item.batches; i++ {
 			counter++
-			go processBatch(
+			processBatch(
 				counter,
 				item,
 				i * size,
@@ -212,25 +224,6 @@ func processAction(session webserver.Session) (interface{}, error) {
 	if parseErr != nil {
 		return nil, parseErr
 	}
-	var sourceImageBytes, sourceImageErr = getImageBytes(
-		request.MultipartForm,
-		"source_image",
-	)
-	if sourceImageErr != nil {
-		return nil, sourceImageErr
-	}
-	if len(sourceImageBytes) == 0 {
-		var fileBytes, fileErr = os.ReadFile("origin.jpg")
-		if fileErr != nil {
-			return nil, fileErr
-		}
-		sourceImageBytes = []imageBytes{
-			{
-				bytes: fileBytes,
-				name: "origin.jpg",
-			},
-		}
-	}
 	var targetImageBytes, targetImageErr = getImageBytes(
 		request.MultipartForm,
 		"target_image",
@@ -242,13 +235,14 @@ func processAction(session webserver.Session) (interface{}, error) {
 	var reactorAPI = getReactorAPI(request.MultipartForm)
 	var quality = getImageQuality(request.MultipartForm)
 	var batches = getSplitBatches(request.MultipartForm)
+	var weight = getCodeFormerWeight(request.MultipartForm)
 	if len(targetImageBytes) == 1 {
 		var outImageBytes = processImage(
-			sourceImageBytes[0],
 			targetImageBytes,
 			namePrefix,
 			reactorAPI,
 			quality,
+			weight,
 			nil,
 		)
 		var responseWriter = session.GetResponseWriter()
@@ -269,11 +263,11 @@ func processAction(session webserver.Session) (interface{}, error) {
 		return webserver.SkipResponseHandling()
 	} else {
 		queue <- item{
-			sourceImageBytes,
 			targetImageBytes,
 			namePrefix,
 			reactorAPI,
 			quality,
+			weight,
 			batches,
 			session,
 		}

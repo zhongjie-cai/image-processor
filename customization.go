@@ -35,8 +35,14 @@ func (customization *myCustomization) Routes() []webserver.Route {
         {
             Endpoint:   "Process",
             Method:     http.MethodPost,
-            Path:       "/",
+            Path:       "/process",
             ActionFunc: processAction,
+        },
+        {
+            Endpoint:   "Model",
+            Method:     http.MethodPost,
+            Path:       "/model",
+            ActionFunc: modelAction,
         },
         {
             Endpoint:   "Download",

@@ -16,13 +16,15 @@ import (
 const IMAGE_PREFIX string = "data:image/png;base64,"
 
 type reactorRequest struct {
-	SourceImage  string `json:"source_image"`
 	TargetImage  string `json:"target_image"`
 	FaceRestorer string `json:"face_restorer"`
 	GenderSource int    `json:"gender_source"`
 	GenderTarget int    `json:"gender_target"`
 	Device       string `json:"device"`
 	MaskFace     int    `json:"mask_face"`
+	SelectSource int    `json:"select_source"`
+	FaceModel    string `json:"face_model"`
+	CodeFormerWeight float64 `json:"codeformer_weight"`
 }
 
 type reactorResponse struct {
@@ -88,18 +90,15 @@ func getErrorBytes(originalName string, errorData error) *imageBytes {
 }
 
 func processImage(
-	sourceImageByte imageBytes,
 	targetImageBytes []imageBytes,
 	namePrefix string,
 	reactorAPI string,
 	quality int,
+	weight float64,
 	progress *progress,
 ) []imageBytes {
 	var count = len(targetImageBytes)
 	var allBytes = make([]imageBytes, 0, count)
-	var srcImage = IMAGE_PREFIX + base64.StdEncoding.EncodeToString(
-		sourceImageByte.bytes,
-	)
 	for i := 0; i < count; i++ {
 		if progress != nil {
 			progress.current = i + 1
@@ -110,13 +109,15 @@ func processImage(
 		)
 		var content, contentError = json.Marshal(
 			reactorRequest{
-				SourceImage:  srcImage,
 				TargetImage:  tarImage,
 				FaceRestorer: "CodeFormer",
 				Device:       "CUDA",
 				MaskFace:     1,
 				GenderSource: 1,
 				GenderTarget: 1,
+				CodeFormerWeight: weight,
+				SelectSource: 1,
+				FaceModel: "origin.safetensors",
 			},
 		)
 		if contentError != nil {
