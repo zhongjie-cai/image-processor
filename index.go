@@ -53,7 +53,7 @@ const INDEX_PAGE_CONTENT string = `<html>
       <br />
       <label>CodeFormer Weight:&nbsp;</label>
       <input type="text" id="codeformerweight"
-        name="codeformerweight" value="0.9" />
+        name="codeformerweight" value="0.5" />
       <br />
       <input type="submit" />
       <br />

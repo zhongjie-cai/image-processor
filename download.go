@@ -22,7 +22,7 @@ func downloadAction(session webserver.Session) (interface{}, error) {
 	var progress, found = statusList[counter]
 	statusListLock.RUnlock()
 	if !found {
-		return nil, fmt.Errorf("Target not found for counter %d", counter)
+		return nil, fmt.Errorf("target not found for counter %d", counter)
 	}
 	var filename = progress.file
 	var fileBytes, fileBytesError = os.ReadFile(filename)
@@ -60,7 +60,7 @@ func downloadAndDeleteAction(session webserver.Session) (interface{}, error) {
 	var progress, found = statusList[counter]
 	statusListLock.RUnlock()
 	if !found {
-		return nil, fmt.Errorf("Target not found for counter %d", counter)
+		return nil, fmt.Errorf("target not found for counter %d", counter)
 	}
 	var filename = progress.file
 	var fileBytes, fileBytesError = os.ReadFile(filename)
