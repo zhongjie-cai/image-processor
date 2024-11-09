@@ -4,18 +4,13 @@ import "time"
 
 const (
 	dateFormat     string = "2006-01-02"
-	timeFormat     string = "15:04:05"
+	timeFormat     string = "15:04:05.999"
 	dateTimeFormat string = dateFormat + "T" + timeFormat
 )
 
-// getTimeNow returns the current system time
-func getTimeNow() time.Time {
-	return timeNow()
-}
-
-// getTimeNowUTC returns the UTC representation of the current system time
+// getTimeNowUTC returns the current time in UTC format
 func getTimeNowUTC() time.Time {
-	return timeNow().UTC()
+	return time.Now().UTC()
 }
 
 // formatDate returns the time in string format "yyyy-MM-dd"
